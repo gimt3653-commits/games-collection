@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>자동차 게임</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+        }
+        canvas {
+            border: 3px solid #e94560;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(233, 69, 96, 0.3);
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            display: none;
+        }
+        #gameOver h1 {
+            font-size: 48px;
+            color: #e94560;
+            text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+            margin-bottom: 10px;
+        }
+        #gameOver p {
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+        #restartBtn {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #e94560;
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #restartBtn:hover {
+            background: #ff6b6b;
+            transform: scale(1.05);
+        }
+        #startScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+        }
+        #startScreen h1 {
+            font-size: 42px;
+            color: #e94560;
+            margin-bottom: 15px;
+        }
+        #startScreen p {
+            font-size: 16px;
+            color: #aaa;
+            margin-bottom: 25px;
+        }
+        #startBtn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #e94560;
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #startBtn:hover {
+            background: #ff6b6b;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="ui">
+            <div>점수: <span id="score">0</span></div>
+            <div>최고 기록: <span id="highScore">0</span></div>
+        </div>
+        <div id="startScreen">
+            <h1>자동차 게임</h1>
+            <p>← → 또는 A/D 키로 조작하세요</p>
+            <button id="startBtn">게임 시작</button>
+        </div>
+        <div id="gameOver">
+            <h1>게임 오버</h1>
+            <p>최종 점수: <span id="finalScore">0</span></p>
+            <button id="restartBtn">다시 시작</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const finalScoreEl = document.getElementById('finalScore');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOver');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // 게임 상태
+        let gameRunning = false;
+        let score = 0;
+        let highScore = 0;
+        try {
+            highScore = parseInt(localStorage.getItem('carGameHighScore')) || 0;
+        } catch (e) {
+            highScore = 0;
+        }
+        highScoreEl.textContent = highScore;
+
+        // 플레이어 자동차
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: canvas.height - 100,
+            width: 50,
+            height: 80,
+            speed: 7,
+            color: '#4ecdc4'
+        };
+
+        // 적 자동차들
+        let enemies = [];
+        let roadLines = [];
+        let particles = [];
+
+        // 입력 상태
+        const keys = {
+            left: false,
+            right: false
+        };
+
+        // 적 생성
+        function spawnEnemy() {
+            const lanes = [50, 150, 250, 350];
+            const lane = lanes[Math.floor(Math.random() * lanes.length)];
+            enemies.push({
+                x: lane - 25,
+                y: -100,
+                width: 50,
+                height: 80,
+                speed: 3 + Math.random() * 2 + score / 500,
+                color: `hsl(${Math.random() * 60 + 330}, 70%, 50%)`
+            });
+        }
+
+        // 도로선 생성
+        function spawnRoadLine() {
+            roadLines.push({
+                y: -20,
+                height: 40,
+                gap: 30
+            });
+        }
+
+        // 파티클 생성 (충돌 효과)
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1,
+                    color: color,
+                    size: Math.random() * 5 + 2
+                });
+            }
+        }
+
+        // 자동차 그리기
+        function drawCar(x, y, width, height, color, isPlayer = false) {
+            ctx.save();
+            
+            // 차체
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.roundRect(x, y, width, height, 8);
+            ctx.fill();
+
+            // 창문
+            ctx.fillStyle = isPlayer ? '#2c3e50' : '#1a1a2e';
+            ctx.beginPath();
+            ctx.roundRect(x + 8, y + 15, width - 16, 20, 4);
+            ctx.fill();
+
+            // 헤드라이트
+            ctx.fillStyle = isPlayer ? '#f1c40f' : '#e74c3c';
+            ctx.fillRect(x + 5, y + (isPlayer ? height - 12 : 0), 12, 8);
+            ctx.fillRect(x + width - 17, y + (isPlayer ? height - 12 : 0), 12, 8);
+
+            // 타이어
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(x - 3, y + 15, 6, 15);
+            ctx.fillRect(x + width - 3, y + 15, 6, 15);
+            ctx.fillRect(x - 3, y + height - 30, 6, 15);
+            ctx.fillRect(x + width - 3, y + height - 30, 6, 15);
+
+            ctx.restore();
+        }
+
+        // 배경 그리기
+        function drawBackground() {
+            // 도로
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 도로 가장자리
+            ctx.fillStyle = '#e94560';
+            ctx.fillRect(0, 0, 10, canvas.height);
+            ctx.fillRect(canvas.width - 10, 0, 10, canvas.height);
+
+            // 중앙선
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([30, 20]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 도로선 업데이트 및 그리기
+            ctx.fillStyle = '#ecf0f1';
+            roadLines.forEach((line, index) => {
+                line.y += 5;
+                ctx.fillRect(100, line.y, 5, line.height);
+                ctx.fillRect(canvas.width - 105, line.y, 5, line.height);
+                
+                if (line.y > canvas.height) {
+                    roadLines.splice(index, 1);
+                }
+            });
+        }
+
+        // 파티클 업데이트 및 그리기
+        function updateParticles() {
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.size *= 0.95;
+
+                if (p.life <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    ctx.save();
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            });
+        }
+
+        // 충돌 감지
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // 게임 오버
+        function gameOver() {
+            gameRunning = false;
+            createParticles(player.x + player.width / 2, player.y + player.height / 2, '#e94560');
+            
+            if (score > highScore) {
+                highScore = score;
+                try {
+                    localStorage.setItem('carGameHighScore', highScore);
+                } catch (e) {
+                    // localStorage 무시
+                }
+                highScoreEl.textContent = highScore;
+            }
+            
+            finalScoreEl.textContent = score;
+            gameOverScreen.style.display = 'block';
+        }
+
+        // 게임 리셋
+        function resetGame() {
+            player.x = canvas.width / 2 - 25;
+            enemies = [];
+            roadLines = [];
+            particles = [];
+            score = 0;
+            scoreEl.textContent = '0';
+        }
+
+        // 메인 게임 루프
+        function gameLoop() {
+            if (!gameRunning) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            // 배경
+            drawBackground();
+
+            // 플레이어 이동
+            if (keys.left && player.x > 15) {
+                player.x -= player.speed;
+            }
+            if (keys.right && player.x < canvas.width - player.width - 15) {
+                player.x += player.speed;
+            }
+
+            // 적 생성
+            if (Math.random() < 0.02 + score / 10000) {
+                spawnEnemy();
+            }
+
+            // 도로선 생성
+            if (Math.random() < 0.1) {
+                spawnRoadLine();
+            }
+
+            // 적 업데이트 및 그리기
+            enemies.forEach((enemy, index) => {
+                enemy.y += enemy.speed;
+                drawCar(enemy.x, enemy.y, enemy.width, enemy.height, enemy.color);
+
+                // 충돌 체크
+                if (checkCollision(player, enemy)) {
+                    gameOver();
+                }
+
+                // 화면 벗어나면 제거하고 점수 증가
+                if (enemy.y > canvas.height) {
+                    enemies.splice(index, 1);
+                    score += 10;
+                    scoreEl.textContent = score;
+                }
+            });
+
+            // 플레이어 그리기
+            drawCar(player.x, player.y, player.width, player.height, player.color, true);
+
+            // 파티클
+            updateParticles();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 이벤트 리스너
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                keys.left = true;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                keys.right = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                keys.left = false;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                keys.right = false;
+            }
+        });
+
+        startBtn.addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            resetGame();
+            gameRunning = true;
+        });
+
+        restartBtn.addEventListener('click', () => {
+            gameOverScreen.style.display = 'none';
+            resetGame();
+            gameRunning = true;
+        });
+
+        // 초기 화면 렌더링
+        drawBackground();
+        drawCar(player.x, player.y, player.width, player.height, player.color, true);
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>

@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 카트 레이싱</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        #gameCanvas { display: block; }
+        #hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 16px;
+            z-index: 100;
+            text-shadow: 1px 1px 3px #000;
+        }
+        #speedometer {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            color: #fff;
+            font-size: 48px;
+            font-weight: bold;
+            z-index: 100;
+            text-shadow: 2px 2px 4px #000;
+        }
+        #speedometer span {
+            font-size: 20px;
+            color: #aaa;
+        }
+        #lapInfo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 20px;
+            z-index: 100;
+            text-shadow: 1px 1px 3px #000;
+            text-align: right;
+        }
+        #minimap {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            width: 180px;
+            height: 180px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #ff6b35;
+            border-radius: 10px;
+            z-index: 100;
+        }
+        #itemSlot {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            width: 80px;
+            height: 80px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 3px solid #ff6b35;
+            border-radius: 10px;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+        }
+        #startScreen, #gameOverScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 200;
+        }
+        #startScreen h1, #gameOverScreen h1 {
+            font-size: 64px;
+            color: #ff6b35;
+            text-shadow: 0 0 30px rgba(255, 107, 53, 0.5);
+            margin-bottom: 20px;
+        }
+        #startScreen p, #gameOverScreen p {
+            font-size: 18px;
+            color: #aaa;
+            margin-bottom: 30px;
+            text-align: center;
+            line-height: 1.8;
+        }
+        .btn {
+            padding: 15px 50px;
+            font-size: 22px;
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .btn:hover {
+            background: #ff8c5a;
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 107, 53, 0.5);
+        }
+        #gameOverScreen { display: none; }
+        #countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 120px;
+            color: #ff6b35;
+            font-weight: bold;
+            text-shadow: 0 0 50px rgba(255, 107, 53, 0.8);
+            z-index: 150;
+            display: none;
+        }
+        #boostEffect {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 165, 0, 0.3) 100%);
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #wrongWay {
+            position: fixed;
+            top: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff0000;
+            font-size: 36px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+            z-index: 100;
+            display: none;
+            animation: pulse 0.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="boostEffect"></div>
+
+    <div id="hud">
+        <div>랩: <span id="lap">1</span> / <span id="totalLaps">3</span></div>
+        <div style="margin-top: 5px;">시간: <span id="raceTime">0:00.00</span></div>
+        <div style="margin-top: 5px;">위치: <span id="position">1</span> / 4</div>
+    </div>
+
+    <div id="lapInfo">
+        <div>체크포인트: <span id="checkpoint">0</span> / <span id="totalCheckpoints">8</span></div>
+    </div>
+
+    <div id="speedometer">
+        <span id="speed">0</span> <span>km/h</span>
+    </div>
+
+    <div id="itemSlot">?</div>
+
+    <canvas id="minimap" width="180" height="180"></canvas>
+
+    <div id="wrongWay">⚠ 잘못된 방향! ⚠</div>
+    <div id="countdown"></div>
+
+    <div id="startScreen">
+        <h1>3D 카트 레이싱</h1>
+        <p>W / ↑ - 가속<br>S / ↓ - 브레이크 / 후진<br>A,D / ←,→ - 조향<br>Space - 아이템 사용<br><br>3바퀴를 완주하여 1위로 결승선을 통과하세요!</p>
+        <button class="btn" id="startBtn">게임 시작</button>
+    </div>
+
+    <div id="gameOverScreen">
+        <h1 id="raceResult">레이스 완료!</h1>
+        <p id="raceStats"></p>
+        <button class="btn" id="restartBtn">다시 시작</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, clock;
+        let kart, wheels = [];
+        let track = { points: [], curve: null, length: 0 };
+        let opponents = [];
+        let items = [];
+        let keys = {};
+        let gameRunning = false;
+        let raceStarted = false;
+        let countdownValue = 3;
+        let lap = 1;
+        let totalLaps = 3;
+        let checkpoint = 0;
+        let totalCheckpoints = 8;
+        let raceTime = 0;
+        let bestLapTime = 0;
+        let lapStartTime = 0;
+        let currentItem = null;
+        let boostTime = 0;
+        let kartSpeed = 0;
+        let maxSpeed = 2.5;
+        let acceleration = 0.03;
+        let brakeForce = 0.05;
+        let friction = 0.01;
+        let turnSpeed = 0.04;
+        let trackWidth = 12;
+        let minimapCanvas, minimapCtx;
+        let audioCtx = null;
+
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playSound(freq, duration, type, volume) {
+            if (!audioCtx) return;
+            type = type || 'sine';
+            volume = volume || 0.1;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playEngineSound(speed) {
+            const freq = 50 + speed * 30;
+            playSound(freq, 0.1, 'sawtooth', 0.03);
+        }
+
+        function playBoostSound() {
+            playSound(200, 0.3, 'sawtooth', 0.15);
+            playSound(300, 0.2, 'square', 0.1);
+        }
+
+        function playItemSound() {
+            playSound(523, 0.1, 'sine', 0.1);
+            setTimeout(function() { playSound(784, 0.15, 'sine', 0.1); }, 100);
+        }
+
+        function playCheckpointSound() {
+            playSound(440, 0.1, 'sine', 0.1);
+            setTimeout(function() { playSound(554, 0.1, 'sine', 0.1); }, 100);
+            setTimeout(function() { playSound(659, 0.2, 'sine', 0.1); }, 200);
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+            minimapCanvas = document.getElementById('minimap');
+            minimapCtx = minimapCanvas.getContext('2d');
+
+            // 조명
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 100, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 500;
+            directionalLight.shadow.camera.left = -100;
+            directionalLight.shadow.camera.right = 100;
+            directionalLight.shadow.camera.top = 100;
+            directionalLight.shadow.camera.bottom = -100;
+            scene.add(directionalLight);
+
+            createTrack();
+            createKart();
+            createOpponents();
+            createItems();
+            createEnvironment();
+
+            document.addEventListener('keydown', function(e) {
+                keys[e.key] = true;
+                if (e.key === ' ' && currentItem && gameRunning) {
+                    useItem();
+                }
+            });
+            document.addEventListener('keyup', function(e) { keys[e.key] = false; });
+            window.addEventListener('resize', onWindowResize);
+
+            document.getElementById('startBtn').addEventListener('click', startRace);
+            document.getElementById('restartBtn').addEventListener('click', function() { location.reload(); });
+
+            animate();
+        }
+
+        function createTrack() {
+            // 트랙 포인트들 (원형 + 변형)
+            const points = [];
+            const numPoints = 16;
+            for (let i = 0; i < numPoints; i++) {
+                const angle = (i / numPoints) * Math.PI * 2;
+                const radius = 80 + Math.sin(angle * 3) * 20 + Math.cos(angle * 2) * 15;
+                points.push(new THREE.Vector3(
+                    Math.cos(angle) * radius,
+                    0,
+                    Math.sin(angle) * radius
+                ));
+            }
+            track.points = points;
+            track.curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.5);
+            track.length = track.curve.getLength();
+
+            // 트랙 메쉬
+            const trackShape = new THREE.Shape();
+            const outerPoints = [];
+            const innerPoints = [];
+            for (let i = 0; i <= 100; i++) {
+                const t = i / 100;
+                const point = track.curve.getPointAt(t);
+                const tangent = track.curve.getTangentAt(t);
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                outerPoints.push(point.clone().add(normal.clone().multiplyScalar(trackWidth / 2)));
+                innerPoints.push(point.clone().add(normal.clone().multiplyScalar(-trackWidth / 2)));
+            }
+
+            // 트랙 표면
+            const trackGeo = new THREE.BufferGeometry();
+            const vertices = [];
+            const uvs = [];
+            for (let i = 0; i <= 100; i++) {
+                const t = i / 100;
+                const point = track.curve.getPointAt(t);
+                const tangent = track.curve.getTangentAt(t);
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+                const left = point.clone().add(normal.clone().multiplyScalar(trackWidth / 2));
+                const right = point.clone().add(normal.clone().multiplyScalar(-trackWidth / 2));
+
+                vertices.push(left.x, 0.01, left.z);
+                vertices.push(right.x, 0.01, right.z);
+                uvs.push(0, t * 20, 1, t * 20);
+            }
+            const indices = [];
+            for (let i = 0; i < 100; i++) {
+                const a = i * 2;
+                const b = i * 2 + 1;
+                const c = i * 2 + 2;
+                const d = i * 2 + 3;
+                indices.push(a, b, c, b, d, c);
+            }
+            trackGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            trackGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            trackGeo.setIndex(indices);
+            trackGeo.computeVertexNormals();
+
+            const trackMat = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                roughness: 0.8,
+                side: THREE.DoubleSide
+            });
+            const trackMesh = new THREE.Mesh(trackGeo, trackMat);
+            trackMesh.receiveShadow = true;
+            scene.add(trackMesh);
+
+            // 트랙 가장자리 (커브)
+            createTrackEdge(outerPoints, 0xff0000);
+            createTrackEdge(innerPoints, 0xffffff);
+
+            // 시작/결승선
+            const startPoint = track.curve.getPointAt(0);
+            const startTangent = track.curve.getTangentAt(0);
+            const startNormal = new THREE.Vector3(-startTangent.z, 0, startTangent.x).normalize();
+
+            const startLineGeo = new THREE.PlaneGeometry(trackWidth, 3);
+            const startLineMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                map: createCheckerboardTexture()
+            });
+            const startLine = new THREE.Mesh(startLineGeo, startLineMat);
+            startLine.rotation.x = -Math.PI / 2;
+            startLine.rotation.z = Math.atan2(startTangent.x, startTangent.z);
+            startLine.position.copy(startPoint);
+            startLine.position.y = 0.02;
+            scene.add(startLine);
+
+            // 체크포인트
+            for (let i = 1; i <= totalCheckpoints; i++) {
+                const t = i / totalCheckpoints;
+                const point = track.curve.getPointAt(t);
+                const tangent = track.curve.getTangentAt(t);
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+                const cpGeo = new THREE.PlaneGeometry(trackWidth, 1);
+                const cpMat = new THREE.MeshStandardMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.3,
+                    side: THREE.DoubleSide
+                });
+                const cp = new THREE.Mesh(cpGeo, cpMat);
+                cp.rotation.x = -Math.PI / 2;
+                cp.rotation.z = Math.atan2(tangent.x, tangent.z);
+                cp.position.copy(point);
+                cp.position.y = 0.03;
+                cp.userData = { type: 'checkpoint', index: i };
+                scene.add(cp);
+            }
+        }
+
+        function createTrackEdge(points, color) {
+            const edgeGeo = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                vertices.push(p.x, 0, p.z);
+                vertices.push(p.x, 0.5, p.z);
+            }
+            const indices = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const a = i * 2;
+                const b = i * 2 + 1;
+                const c = i * 2 + 2;
+                const d = i * 2 + 3;
+                indices.push(a, b, c, b, d, c);
+            }
+            edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            edgeGeo.setIndex(indices);
+            edgeGeo.computeVertexNormals();
+
+            const edgeMat = new THREE.MeshStandardMaterial({
+                color: color,
+                roughness: 0.5,
+                side: THREE.DoubleSide
+            });
+            const edge = new THREE.Mesh(edgeGeo, edgeMat);
+            edge.castShadow = true;
+            scene.add(edge);
+        }
+
+        function createCheckerboardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            for (let y = 0; y < 4; y++) {
+                for (let x = 0; x < 16; x++) {
+                    ctx.fillStyle = (x + y) % 2 === 0 ? '#fff' : '#000';
+                    ctx.fillRect(x * 8, y * 8, 8, 8);
+                }
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        function createKart() {
+            kart = new THREE.Group();
+
+            // 차체
+            const bodyGeo = new THREE.BoxGeometry(1.2, 0.4, 2);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.4;
+            body.castShadow = true;
+            kart.add(body);
+
+            // 앞부분
+            const frontGeo = new THREE.BoxGeometry(1, 0.3, 0.5);
+            const frontMat = new THREE.MeshStandardMaterial({ color: 0xcc0000 });
+            const front = new THREE.Mesh(frontGeo, frontMat);
+            front.position.set(0, 0.35, 1.1);
+            front.castShadow = true;
+            kart.add(front);
+
+            // 시트
+            const seatGeo = new THREE.BoxGeometry(0.6, 0.4, 0.5);
+            const seatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const seat = new THREE.Mesh(seatGeo, seatMat);
+            seat.position.set(0, 0.7, -0.3);
+            kart.add(seat);
+
+            // 운전자 머리
+            const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.set(0, 1, -0.3);
+            head.castShadow = true;
+            kart.add(head);
+
+            // 헬멧
+            const helmetGeo = new THREE.SphereGeometry(0.22, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const helmetMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const helmet = new THREE.Mesh(helmetGeo, helmetMat);
+            helmet.position.set(0, 1.05, -0.3);
+            kart.add(helmet);
+
+            // 바퀴
+            const wheelGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.2, 16);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const wheelPositions = [
+                { x: -0.7, y: 0.25, z: 0.7 },
+                { x: 0.7, y: 0.25, z: 0.7 },
+                { x: -0.7, y: 0.25, z: -0.7 },
+                { x: 0.7, y: 0.25, z: -0.7 }
+            ];
+            wheelPositions.forEach(function(pos) {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(pos.x, pos.y, pos.z);
+                wheel.castShadow = true;
+                kart.add(wheel);
+                wheels.push(wheel);
+            });
+
+            // 스포일러
+            const spoilerGeo = new THREE.BoxGeometry(1.2, 0.05, 0.3);
+            const spoilerMat = new THREE.MeshStandardMaterial({ color: 0xcc0000 });
+            const spoiler = new THREE.Mesh(spoilerGeo, spoilerMat);
+            spoiler.position.set(0, 0.9, -1);
+            kart.add(spoiler);
+
+            // 스포일러 지지대
+            const supportGeo = new THREE.BoxGeometry(0.05, 0.3, 0.05);
+            const supportMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            [-0.4, 0.4].forEach(function(x) {
+                const support = new THREE.Mesh(supportGeo, supportMat);
+                support.position.set(x, 0.75, -1);
+                kart.add(support);
+            });
+
+            scene.add(kart);
+        }
+
+        function createOpponents() {
+            const colors = [0x0066ff, 0x00cc00, 0xffff00];
+            const names = ['Blue', 'Green', 'Yellow'];
+
+            for (let i = 0; i < 3; i++) {
+                const opp = new THREE.Group();
+
+                const bodyGeo = new THREE.BoxGeometry(1.2, 0.4, 2);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: colors[i], roughness: 0.3 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 0.4;
+                body.castShadow = true;
+                opp.add(body);
+
+                const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.set(0, 1, -0.3);
+                opp.add(head);
+
+                const helmetGeo = new THREE.SphereGeometry(0.22, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+                const helmetMat = new THREE.MeshStandardMaterial({ color: colors[i] });
+                const helmet = new THREE.Mesh(helmetGeo, helmetMat);
+                helmet.position.set(0, 1.05, -0.3);
+                opp.add(helmet);
+
+                const wheelGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.2, 16);
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+                [{ x: -0.7, z: 0.7 }, { x: 0.7, z: 0.7 }, { x: -0.7, z: -0.7 }, { x: 0.7, z: -0.7 }].forEach(function(pos) {
+                    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                    wheel.rotation.z = Math.PI / 2;
+                    wheel.position.set(pos.x, 0.25, pos.z);
+                    opp.add(wheel);
+                });
+
+                opp.userData = {
+                    name: names[i],
+                    speed: 0,
+                    maxSpeed: 2 + Math.random() * 0.5,
+                    trackT: 0,
+                    lap: 1,
+                    checkpoint: 0,
+                    color: colors[i]
+                };
+
+                scene.add(opp);
+                opponents.push(opp);
+            }
+        }
+
+        function createItems() {
+            const itemTypes = ['boost', 'missile', 'shield'];
+            for (let i = 0; i < 10; i++) {
+                const t = (i + 0.5) / 10;
+                const point = track.curve.getPointAt(t);
+                const tangent = track.curve.getTangentAt(t);
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+                const itemGeo = new THREE.BoxGeometry(1, 1, 1);
+                const itemMat = new THREE.MeshStandardMaterial({
+                    color: 0xff6b35,
+                    emissive: 0xff6b35,
+                    emissiveIntensity: 0.5,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const item = new THREE.Mesh(itemGeo, itemMat);
+                item.position.copy(point);
+                item.position.y = 1;
+                item.userData = {
+                    type: 'item',
+                    itemType: itemTypes[Math.floor(Math.random() * itemTypes.length)],
+                    active: true,
+                    respawnTime: 0
+                };
+                scene.add(item);
+                items.push(item);
+            }
+        }
+
+        function createEnvironment() {
+            // 잔디 바닥
+            const grassGeo = new THREE.PlaneGeometry(500, 500);
+            const grassMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+            const grass = new THREE.Mesh(grassGeo, grassMat);
+            grass.rotation.x = -Math.PI / 2;
+            grass.position.y = -0.01;
+            grass.receiveShadow = true;
+            scene.add(grass);
+
+            // 나무들
+            for (let i = 0; i < 50; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 120 + Math.random() * 80;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+
+                const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4, 8);
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.set(x, 2, z);
+                trunk.castShadow = true;
+                scene.add(trunk);
+
+                const leavesGeo = new THREE.SphereGeometry(3, 8, 8);
+                const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+                const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                leaves.position.set(x, 6, z);
+                leaves.castShadow = true;
+                scene.add(leaves);
+            }
+
+            // 관중 스탠드
+            for (let i = 0; i < 4; i++) {
+                const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+                const radius = 100;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+
+                const standGeo = new THREE.BoxGeometry(20, 8, 10);
+                const standMat = new THREE.MeshStandardMaterial({ color: 0x666666 });
+                const stand = new THREE.Mesh(standGeo, standMat);
+                stand.position.set(x, 4, z);
+                stand.lookAt(0, 0, 0);
+                stand.castShadow = true;
+                scene.add(stand);
+            }
+
+            // 깃발들
+            for (let i = 0; i < 20; i++) {
+                const t = i / 20;
+                const point = track.curve.getPointAt(t);
+                const tangent = track.curve.getTangentAt(t);
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+                const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 6, 8);
+                const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.copy(point.clone().add(normal.clone().multiplyScalar(trackWidth / 2 + 2)));
+                pole.position.y = 3;
+                scene.add(pole);
+
+                const flagGeo = new THREE.PlaneGeometry(2, 1.2);
+                const flagMat = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color().setHSL(i / 20, 1, 0.5),
+                    side: THREE.DoubleSide
+                });
+                const flag = new THREE.Mesh(flagGeo, flagMat);
+                flag.position.copy(pole.position);
+                flag.position.y = 5.5;
+                flag.position.add(normal.clone().multiplyScalar(1));
+                scene.add(flag);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function startRace() {
+            document.getElementById('startScreen').style.display = 'none';
+            initAudio();
+            countdownValue = 3;
+            updateCountdown();
+        }
+
+        function updateCountdown() {
+            const cd = document.getElementById('countdown');
+            if (countdownValue > 0) {
+                cd.style.display = 'block';
+                cd.textContent = countdownValue;
+                playSound(440, 0.2, 'sine', 0.15);
+                countdownValue--;
+                setTimeout(updateCountdown, 1000);
+            } else {
+                cd.textContent = 'GO!';
+                playSound(880, 0.5, 'sine', 0.2);
+                setTimeout(function() {
+                    cd.style.display = 'none';
+                    gameRunning = true;
+                    raceStarted = true;
+                    lapStartTime = 0;
+                }, 500);
+            }
+        }
+
+        function useItem() {
+            if (!currentItem) return;
+
+            playItemSound();
+            const itemSlot = document.getElementById('itemSlot');
+
+            if (currentItem === 'boost') {
+                boostTime = 3000;
+                playBoostSound();
+                document.getElementById('boostEffect').style.opacity = 1;
+                setTimeout(function() {
+                    document.getElementById('boostEffect').style.opacity = 0;
+                }, 3000);
+            } else if (currentItem === 'missile') {
+                // 가장 가까운 상대방에게 미사일 발사
+                let nearest = null;
+                let minDist = Infinity;
+                opponents.forEach(function(opp) {
+                    const dist = kart.position.distanceTo(opp.position);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearest = opp;
+                    }
+                });
+                if (nearest && minDist < 30) {
+                    nearest.userData.speed *= 0.5;
+                    setTimeout(function() {
+                        nearest.userData.speed = nearest.userData.maxSpeed;
+                    }, 2000);
+                }
+            } else if (currentItem === 'shield') {
+                // 보호막 (3초간 충돌 무시)
+                kart.userData = { shield: 3000 };
+                setTimeout(function() {
+                    kart.userData = null;
+                }, 3000);
+            }
+
+            currentItem = null;
+            itemSlot.textContent = '?';
+        }
+
+        function updateKart(delta) {
+            if (!gameRunning) return;
+
+            // 가속/브레이크
+            if (keys['w'] || keys['W'] || keys['ArrowUp']) {
+                kartSpeed = Math.min(kartSpeed + acceleration, maxSpeed);
+            } else if (keys['s'] || keys['S'] || keys['ArrowDown']) {
+                kartSpeed = Math.max(kartSpeed - brakeForce, -maxSpeed * 0.3);
+            } else {
+                kartSpeed *= (1 - friction);
+            }
+
+            // 부스터
+            if (boostTime > 0) {
+                boostTime -= delta * 1000;
+                kartSpeed = Math.min(kartSpeed + acceleration * 2, maxSpeed * 1.5);
+            }
+
+            // 조향
+            if (Math.abs(kartSpeed) > 0.1) {
+                const turnFactor = kartSpeed > 0 ? 1 : -1;
+                if (keys['a'] || keys['A'] || keys['ArrowLeft']) {
+                    kart.rotation.y += turnSpeed * turnFactor;
+                }
+                if (keys['d'] || keys['D'] || keys['ArrowRight']) {
+                    kart.rotation.y -= turnSpeed * turnFactor;
+                }
+            }
+
+            // 이동
+            kart.position.x += Math.sin(kart.rotation.y) * kartSpeed;
+            kart.position.z += Math.cos(kart.rotation.y) * kartSpeed;
+
+            // 트랙 이탈 체크
+            const closestT = getClosestTrackT(kart.position);
+            const closestPoint = track.curve.getPointAt(closestT);
+            const distToCenter = kart.position.distanceTo(closestPoint);
+
+            if (distToCenter > trackWidth / 2 + 2) {
+                // 트랙 이탈 - 감속
+                kartSpeed *= 0.95;
+            }
+
+            // 바퀴 회전
+            wheels.forEach(function(wheel) {
+                wheel.rotation.x += kartSpeed * 0.5;
+            });
+
+            // 속도 표시
+            document.getElementById('speed').textContent = Math.abs(Math.round(kartSpeed * 80));
+
+            // 엔진 사운드
+            if (Math.abs(kartSpeed) > 0.1) {
+                playEngineSound(Math.abs(kartSpeed));
+            }
+
+            // 체크포인트 체크
+            checkCheckpoints();
+
+            // 랩 체크
+            checkLap();
+
+            // 아이템 줍기
+            checkItems();
+
+            // 침묵력 업데이트
+            updateMinimap();
+        }
+
+        function getClosestTrackT(position) {
+            let minDist = Infinity;
+            let closestT = 0;
+            for (let i = 0; i <= 100; i++) {
+                const t = i / 100;
+                const point = track.curve.getPointAt(t);
+                const dist = position.distanceTo(point);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestT = t;
+                }
+            }
+            return closestT;
+        }
+
+        function checkCheckpoints() {
+            const kartT = getClosestTrackT(kart.position);
+            const expectedT = checkpoint / totalCheckpoints;
+
+            if (Math.abs(kartT - expectedT) < 0.05) {
+                checkpoint++;
+                playCheckpointSound();
+                document.getElementById('checkpoint').textContent = checkpoint;
+
+                if (checkpoint >= totalCheckpoints) {
+                    checkpoint = 0;
+                }
+            }
+        }
+
+        function checkLap() {
+            const kartT = getClosestTrackT(kart.position);
+
+            if (kartT < 0.05 && checkpoint === 0 && raceTime > 5) {
+                const lapTime = raceTime - lapStartTime;
+                if (bestLapTime === 0 || lapTime < bestLapTime) {
+                    bestLapTime = lapTime;
+                }
+                lapStartTime = raceTime;
+                lap++;
+
+                if (lap > totalLaps) {
+                    endRace();
+                } else {
+                    document.getElementById('lap').textContent = lap;
+                }
+            }
+        }
+
+        function checkItems() {
+            items.forEach(function(item) {
+                if (!item.userData.active) return;
+                const dist = kart.position.distanceTo(item.position);
+                if (dist < 2) {
+                    item.userData.active = false;
+                    item.visible = false;
+                    item.userData.respawnTime = 10000;
+                    currentItem = item.userData.itemType;
+                    document.getElementById('itemSlot').textContent =
+                        currentItem === 'boost' ? '🔥' :
+                        currentItem === 'missile' ? '🚀' : '🛡';
+                }
+            });
+        }
+
+        function updateOpponents(delta) {
+            opponents.forEach(function(opp) {
+                const data = opp.userData;
+
+                // 트랙 따라 이동
+                data.trackT += data.speed * 0.001;
+                if (data.trackT > 1) {
+                    data.trackT -= 1;
+                    data.lap++;
+                }
+
+                const targetPoint = track.curve.getPointAt(data.trackT);
+                const targetTangent = track.curve.getTangentAt(data.trackT);
+
+                // 목표 지점을 향해 이동
+                const angle = Math.atan2(targetPoint.x - opp.position.x, targetPoint.z - opp.position.z);
+                opp.rotation.y = angle;
+
+                // 가속
+                data.speed = Math.min(data.speed + 0.02, data.maxSpeed);
+
+                // 커브에서 감속
+                const curvature = Math.abs(track.curve.getTangentAt(data.trackT).x);
+                if (curvature > 0.5) {
+                    data.speed *= 0.98;
+                }
+
+                opp.position.x += Math.sin(angle) * data.speed;
+                opp.position.z += Math.cos(angle) * data.speed;
+
+                // 바퀴 회전
+                opp.children.forEach(function(child) {
+                    if (child.geometry && child.geometry.type === 'CylinderGeometry') {
+                        child.rotation.x += data.speed * 0.5;
+                    }
+                });
+            });
+
+            // 위치 계산
+            updatePositions();
+        }
+
+        function updatePositions() {
+            const allKarts = [{ obj: kart, t: getClosestTrackT(kart.position), lap: lap }].concat(
+                opponents.map(function(opp) {
+                    return { obj: opp, t: opp.userData.trackT, lap: opp.userData.lap };
+                })
+            );
+
+            allKarts.sort(function(a, b) {
+                if (a.lap !== b.lap) return b.lap - a.lap;
+                return b.t - a.t;
+            });
+
+            const position = allKarts.findIndex(function(k) { return k.obj === kart; }) + 1;
+            document.getElementById('position').textContent = position;
+        }
+
+        function updateItems(delta) {
+            items.forEach(function(item) {
+                if (!item.userData.active) {
+                    item.userData.respawnTime -= delta * 1000;
+                    if (item.userData.respawnTime <= 0) {
+                        item.userData.active = true;
+                        item.visible = true;
+                    }
+                } else {
+                    item.rotation.y += 0.03;
+                    item.position.y = 1 + Math.sin(Date.now() * 0.003) * 0.3;
+                }
+            });
+        }
+
+        function updateCamera() {
+            const cameraDistance = 8;
+            const cameraHeight = 4;
+            const lookAhead = 5;
+
+            const behind = new THREE.Vector3(
+                -Math.sin(kart.rotation.y) * cameraDistance,
+                cameraHeight,
+                -Math.cos(kart.rotation.y) * cameraDistance
+            );
+
+            const targetPos = kart.position.clone().add(behind);
+            camera.position.lerp(targetPos, 0.05);
+
+            const lookAt = new THREE.Vector3(
+                kart.position.x + Math.sin(kart.rotation.y) * lookAhead,
+                1,
+                kart.position.z + Math.cos(kart.rotation.y) * lookAhead
+            );
+            camera.lookAt(lookAt);
+        }
+
+        function updateMinimap() {
+            minimapCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            minimapCtx.fillRect(0, 0, 180, 180);
+
+            const scale = 180 / 250;
+            const offsetX = 90;
+            const offsetY = 90;
+
+            // 트랙
+            minimapCtx.strokeStyle = '#666';
+            minimapCtx.lineWidth = 3;
+            minimapCtx.beginPath();
+            for (let i = 0; i <= 100; i++) {
+                const t = i / 100;
+                const point = track.curve.getPointAt(t);
+                const x = point.x * scale + offsetX;
+                const y = point.z * scale + offsetY;
+                if (i === 0) minimapCtx.moveTo(x, y);
+                else minimapCtx.lineTo(x, y);
+            }
+            minimapCtx.closePath();
+            minimapCtx.stroke();
+
+            // 상대방
+            opponents.forEach(function(opp) {
+                minimapCtx.fillStyle = '#' + opp.userData.color.toString(16).padStart(6, '0');
+                minimapCtx.beginPath();
+                minimapCtx.arc(
+                    opp.position.x * scale + offsetX,
+                    opp.position.z * scale + offsetY,
+                    4, 0, Math.PI * 2
+                );
+                minimapCtx.fill();
+            });
+
+            // 플레이어
+            minimapCtx.fillStyle = '#ff0000';
+            minimapCtx.beginPath();
+            minimapCtx.arc(
+                kart.position.x * scale + offsetX,
+                kart.position.z * scale + offsetY,
+                5, 0, Math.PI * 2
+            );
+            minimapCtx.fill();
+        }
+
+        function updateRaceTime(delta) {
+            if (!gameRunning) return;
+            raceTime += delta;
+            const minutes = Math.floor(raceTime / 60);
+            const seconds = Math.floor(raceTime % 60);
+            const ms = Math.floor((raceTime % 1) * 100);
+            document.getElementById('raceTime').textContent =
+                minutes + ':' + String(seconds).padStart(2, '0') + '.' + String(ms).padStart(2, '0');
+        }
+
+        function endRace() {
+            gameRunning = false;
+            const position = document.getElementById('position').textContent;
+            const screen = document.getElementById('gameOverScreen');
+            const title = document.getElementById('raceResult');
+            const stats = document.getElementById('raceStats');
+
+            if (position === '1') {
+                title.textContent = '🏆 1위!';
+                title.style.color = '#ffd700';
+            } else if (position === '2') {
+                title.textContent = '🥈 2위';
+                title.style.color = '#c0c0c0';
+            } else if (position === '3') {
+                title.textContent = '🥉 3위';
+                title.style.color = '#cd7f32';
+            } else {
+                title.textContent = '4위';
+                title.style.color = '#fff';
+            }
+
+            const minutes = Math.floor(raceTime / 60);
+            const seconds = Math.floor(raceTime % 60);
+            const ms = Math.floor((raceTime % 1) * 100);
+            stats.innerHTML = '총 시간: ' + minutes + ':' + String(seconds).padStart(2, '0') + '.' + String(ms).padStart(2, '0') +
+                '<br>최고 랩: ' + (bestLapTime > 0 ? bestLapTime.toFixed(2) + '초' : '-');
+
+            screen.style.display = 'flex';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (gameRunning) {
+                updateRaceTime(delta);
+                updateKart(delta);
+                updateOpponents(delta);
+                updateItems(delta);
+                updateCamera();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // 시작 위치 설정
+        function resetPositions() {
+            const startT = 0;
+            const startPoint = track.curve.getPointAt(startT);
+            const startTangent = track.curve.getTangentAt(startT);
+            const startNormal = new THREE.Vector3(-startTangent.z, 0, startTangent.x).normalize();
+
+            kart.position.copy(startPoint);
+            kart.rotation.y = Math.atan2(startTangent.x, startTangent.z);
+
+            opponents.forEach(function(opp, i) {
+                const offset = (i + 1) * 3;
+                const t = (startT - offset / track.length + 1) % 1;
+                const point = track.curve.getPointAt(t);
+                const tangent = track.curve.getTangentAt(t);
+                opp.position.copy(point);
+                opp.rotation.y = Math.atan2(tangent.x, tangent.z);
+                opp.userData.trackT = t;
+                opp.userData.speed = 0;
+            });
+        }
+
+        // 초기화 후 시작
+        resetPositions();
+        init();
+    </script>
+</body>
+</html>
